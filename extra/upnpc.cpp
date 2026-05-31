@@ -66,8 +66,29 @@ bool UPnPc::init()
 
 bool UPnPc::add(const string& port, const UPnP::Protocol protocol, const string& description)
 {
-    return UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port.c_str(), port.c_str(),
-        Util::getLocalIp(AF_INET).c_str(), description.c_str(), protocols[protocol], nullptr, nullptr) == UPNPCOMMAND_SUCCESS;
+    const string localIp = Util::getLocalIp(AF_INET);
+    const int addResult = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port.c_str(), port.c_str(),
+        localIp.c_str(), description.c_str(), protocols[protocol], nullptr, nullptr);
+
+    if (addResult == UPNPCOMMAND_SUCCESS)
+        return true;
+
+    /*
+     * Some IGDs reject AddPortMapping when the same mapping already exists.
+     * This happens frequently after an unclean app exit or when the router keeps
+     * leased mappings around across client restarts. Treat an exact existing
+     * mapping to this host and port as success; connectivity is already active,
+     * and adding a rule lets normal shutdown clean it up later.
+     */
+    char intClient[64] = { 0 };
+    char intPort[16] = { 0 };
+    char desc[128] = { 0 };
+    char enabled[8] = { 0 };
+    char leaseDuration[16] = { 0 };
+    const int existingResult = UPNP_GetSpecificPortMappingEntry(urls.controlURL, data.first.servicetype,
+        port.c_str(), protocols[protocol], nullptr, intClient, intPort, desc, enabled, leaseDuration);
+
+    return existingResult == UPNPCOMMAND_SUCCESS && localIp == intClient && port == intPort;
 }
 
 bool UPnPc::remove(const string& port, const UPnP::Protocol protocol)
