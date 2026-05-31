@@ -1,0 +1,37 @@
+name: macOS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+          - arch: x86_64
+            runner: macos-13
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install cmake ninja ccache qt@5 gettext openssl@3 aspell jsoncpp libidn2 lua miniupnpc pcre2
+      - name: Build app
+        run: |
+          export HOMEBREW_PREFIX="$(brew --prefix)"
+          macos/build-app.sh --arch "${{ matrix.arch }}" --no-package
+      - name: Verify app
+        run: |
+          app="dist/macos-${{ matrix.arch }}-release/EiskaltDC++.app"
+          file "$app/Contents/MacOS/EiskaltDC++"
+          codesign --verify --deep --strict "$app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EiskaltDC++-${{ matrix.arch }}
+          path: dist/macos-${{ matrix.arch }}-release/EiskaltDC++.app
