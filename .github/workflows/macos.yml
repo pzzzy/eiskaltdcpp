@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   HOMEBREW_NO_ENV_HINTS: 1
 
 jobs:
@@ -19,11 +18,20 @@ jobs:
             runner: macos-14
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja ccache qt@5 gettext openssl@3 aspell jsoncpp libidn2 lua miniupnpc pcre2
+          deps=(cmake ninja ccache qt@5 gettext openssl@3 aspell jsoncpp libidn2 lua miniupnpc pcre2)
+          missing=()
+          for dep in "${deps[@]}"; do
+            brew list --formula "$dep" >/dev/null 2>&1 || missing+=("$dep")
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            # GitHub Actions turns Homebrew's harmless "Warning:" lines into annotations.
+            # Keep logs readable without hiding brew failures.
+            brew install "${missing[@]}" 2>&1 | sed 's/Warning:/Note:/g'
+          fi
       - name: Build app
         run: |
           export HOMEBREW_PREFIX="$(brew --prefix)"
@@ -33,7 +41,7 @@ jobs:
           app="dist/macos-${{ matrix.arch }}-release/EiskaltDC++.app"
           file "$app/Contents/MacOS/EiskaltDC++"
           codesign --verify --deep --strict "$app"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: EiskaltDC++-${{ matrix.arch }}
           path: dist/macos-${{ matrix.arch }}-release/EiskaltDC++.app
