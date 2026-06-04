@@ -38,6 +38,7 @@ const uint64_t UPNP_REFRESH_INTERVAL = 60 * 60 * 1000ULL;
 
 MappingManager::MappingManager() :
     opened(false),
+    refreshing(false),
     portMapping(false),
     lastRefresh(0) {
     TimerManager::getInstance()->addListener(this);
@@ -70,6 +71,7 @@ bool MappingManager::refresh() {
         return false;
     }
 
+    refreshing = opened;
     start();
 
     return true;
@@ -91,6 +93,9 @@ int MappingManager::run() {
 #ifdef WITH_DHT
     const string dht_port = dht::DHT::getInstance()->getPort();
 #endif
+
+    const bool wasRefreshing = refreshing;
+    opened = false;
 
     for(int attempt = 0; attempt < 2 && !opened; ++attempt) {
         if(attempt > 0) {
@@ -153,17 +158,25 @@ int MappingManager::run() {
                 }
             }
 
-            ConnectivityManager::getInstance()->mappingFinished(true);
+            if(!wasRefreshing) {
+                ConnectivityManager::getInstance()->mappingFinished(true);
+            }
 
             break;
         }
     }
 
     if(!opened) {
-        log(_("Failed to create port mappings"));
-        ConnectivityManager::getInstance()->mappingFinished(false);
+        if(wasRefreshing) {
+            log(_("Failed to refresh port mappings; will retry later"));
+            opened = true;
+        } else {
+            log(_("Failed to create port mappings"));
+            ConnectivityManager::getInstance()->mappingFinished(false);
+        }
     }
     portMapping = false;
+    refreshing = false;
     lastRefresh = GET_TICK();
     return 0;
 }

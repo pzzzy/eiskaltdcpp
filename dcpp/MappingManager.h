@@ -62,6 +62,7 @@ private:
     Impls impls;
 
     bool opened;
+    bool refreshing;
     Atomic<bool,memory_ordering_strong> portMapping;
     uint64_t lastRefresh;
 
