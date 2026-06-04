@@ -23,6 +23,7 @@
  */
 
 #include "upnpc.h"
+#include "dcpp/LogManager.h"
 #include "dcpp/Util.h"
 #include "dcpp/SettingsManager.h"
 #ifndef STATICLIB
@@ -31,6 +32,14 @@
 #include <miniupnpc/miniupnpc.h>
 #include <miniupnpc/upnpcommands.h>
 #include <miniupnpc/upnperrors.h>
+
+namespace {
+
+void logMiniUPnPFailure(const std::string& message) {
+    dcpp::LogManager::getInstance()->message("UPnP: MiniUPnP: " + message);
+}
+
+}
 
 static UPNPUrls urls;
 static IGDdatas data;
@@ -45,23 +54,33 @@ bool UPnPc::init()
     const char *multicast_interface = SettingsManager::getInstance()->isDefault(SettingsManager::BIND_ADDRESS) ? nullptr : bind_address.c_str();
 
 #if (MINIUPNPC_API_VERSION >= 14)
-    UPNPDev *devices = upnpDiscover(5000, multicast_interface, nullptr, 0, 0, 2, nullptr);
+    int discoverError = 0;
+    UPNPDev *devices = upnpDiscover(5000, multicast_interface, nullptr, 0, 0, 2, &discoverError);
 #else
     UPNPDev *devices = upnpDiscover(5000, multicast_interface, nullptr, 0, 0, nullptr);
 #endif
 
-    if (!devices)
+    if (!devices) {
+#if (MINIUPNPC_API_VERSION >= 14)
+        logMiniUPnPFailure("SSDP discovery found no devices (error " + std::to_string(discoverError) + ")");
+#else
+        logMiniUPnPFailure("SSDP discovery found no devices");
+#endif
         return false;
+    }
 
 #if (MINIUPNPC_API_VERSION >= 18)
-    bool ret = UPNP_GetValidIGD(devices, &urls, &data, nullptr, 0, nullptr, 0);
+    const int ret = UPNP_GetValidIGD(devices, &urls, &data, nullptr, 0, nullptr, 0);
 #else
-    bool ret = UPNP_GetValidIGD(devices, &urls, &data, nullptr, 0);
+    const int ret = UPNP_GetValidIGD(devices, &urls, &data, nullptr, 0);
 #endif
 
     freeUPNPDevlist(devices);
 
-    return ret;
+    if(ret == 0)
+        logMiniUPnPFailure("SSDP discovery found devices, but no valid Internet Gateway Device was available");
+
+    return ret != 0;
 }
 
 bool UPnPc::add(const string& port, const UPnP::Protocol protocol, const string& description)
