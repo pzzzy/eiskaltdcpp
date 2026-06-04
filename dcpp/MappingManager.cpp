@@ -32,6 +32,21 @@
 #include "dht/DHT.h"
 #endif
 namespace dcpp {
+namespace {
+const uint64_t UPNP_REFRESH_INTERVAL = 60 * 60 * 1000ULL;
+}
+
+MappingManager::MappingManager() :
+    opened(false),
+    portMapping(false),
+    lastRefresh(0) {
+    TimerManager::getInstance()->addListener(this);
+}
+
+MappingManager::~MappingManager() noexcept {
+    TimerManager::getInstance()->removeListener(this);
+    join();
+}
 
 void MappingManager::addImplementation(UPnP* impl) {
     impls.push_back(std::unique_ptr<UPnP>(impl));
@@ -41,6 +56,10 @@ bool MappingManager::open() {
     if(opened)
         return false;
 
+    return refresh();
+}
+
+bool MappingManager::refresh() {
     if(impls.empty()) {
         log(_("No UPnP implementation available"));
         return false;
@@ -145,7 +164,15 @@ int MappingManager::run() {
         ConnectivityManager::getInstance()->mappingFinished(false);
     }
     portMapping = false;
+    lastRefresh = GET_TICK();
     return 0;
+}
+
+void MappingManager::on(TimerManagerListener::Minute, uint64_t aTick) noexcept {
+    if(opened && aTick - lastRefresh >= UPNP_REFRESH_INTERVAL) {
+        log(_("Refreshing UPnP port mappings..."));
+        refresh();
+    }
 }
 
 void MappingManager::close(UPnP& impl) {
