@@ -73,64 +73,71 @@ int MappingManager::run() {
     const string dht_port = dht::DHT::getInstance()->getPort();
 #endif
 
-    for(auto &i : impls) {
-        UPnP& impl = *i;
-
-        close(impl);
-
-        if(!impl.init()){
-            log(str(F_("Failed to initialize the %1% interface") % impl.getName()));
-            continue;
+    for(int attempt = 0; attempt < 2 && !opened; ++attempt) {
+        if(attempt > 0) {
+            log(_("Port mapping failed; retrying after a short delay..."));
+            Thread::sleep(3000);
         }
 
-        if(!conn_port.empty() && !impl.open(conn_port, UPnP::PROTOCOL_TCP, str(F_(APPNAME " Transfer Port (%1% TCP)") % conn_port))){
-            log(str(F_("The %1% interface has failed to map the %2% %3% port") % impl.getName() % "TCP" % conn_port));
-            continue;
-        }
+        for(auto &i : impls) {
+            UPnP& impl = *i;
 
-        if(!secure_port.empty() && !impl.open(secure_port, UPnP::PROTOCOL_TCP, str(F_(APPNAME " Encrypted Transfer Port (%1% TCP)") % secure_port))){
-            log(str(F_("The %1% interface has failed to map the %2% %3% port") % impl.getName() % "TLS" % secure_port));
-            continue;
-        }
+            close(impl);
 
-        if(!search_port.empty() && !impl.open(search_port, UPnP::PROTOCOL_UDP, str(F_(APPNAME " Search Port (%1% UDP)") % search_port))){
-            log(str(F_("The %1% interface has failed to map the %2% %3% port") % impl.getName() % "UDP" % search_port));
-            continue;
-        }
-#ifdef WITH_DHT
-        if(!dht_port.empty() && !impl.open(dht_port, UPnP::PROTOCOL_UDP, str(F_(APPNAME " DHT Port (%1% UDP)") % dht_port))){
-            log(str(F_("The %1% interface has failed to map the %2% %3% port") % impl.getName() % "UDP" % dht_port));
-            continue;
-        }
-#endif
-
-        opened = true;
-
-#ifdef WITH_DHT
-        if(!dht_port.empty())
-            log(str(F_("Successfully created port mappings (TCP: %1%, UDP: %2%, TLS: %3%, DHT: %4%), mapped using the %5% interface") % conn_port % search_port % secure_port % dht_port % impl.getName()));
-        else
-            log(str(F_("Successfully created port mappings (TCP: %1%, UDP: %2%, TLS: %3%), mapped using the %4% interface") % conn_port % search_port % secure_port % impl.getName()));
-#else
-        log(str(F_("Successfully created port mappings (TCP: %1%, UDP: %2%, TLS: %3%), mapped using the %4% interface") % conn_port % search_port % secure_port % impl.getName()));
-#endif
-
-        if(!BOOLSETTING(NO_IP_OVERRIDE)) {
-            // now lets configure the external IP (connect to me) address
-            string ExternalIP = impl.getExternalIP();
-            if(!ExternalIP.empty()) {
-                // woohoo, we got the external IP from the UPnP framework
-                SettingsManager::getInstance()->set(SettingsManager::EXTERNAL_IP, ExternalIP);
-            } else {
-                //:-( Looks like we have to rely on the user setting the external IP manually
-                // no need to do cleanup here because the mappings work
-                log(_("Failed to get external IP"));
+            if(!impl.init()){
+                log(str(F_("Failed to initialize the %1% interface") % impl.getName()));
+                continue;
             }
+
+            if(!conn_port.empty() && !impl.open(conn_port, UPnP::PROTOCOL_TCP, str(F_(APPNAME " Transfer Port (%1% TCP)") % conn_port))){
+                log(str(F_("The %1% interface has failed to map the %2% %3% port") % impl.getName() % "TCP" % conn_port));
+                continue;
+            }
+
+            if(!secure_port.empty() && !impl.open(secure_port, UPnP::PROTOCOL_TCP, str(F_(APPNAME " Encrypted Transfer Port (%1% TCP)") % secure_port))){
+                log(str(F_("The %1% interface has failed to map the %2% %3% port") % impl.getName() % "TLS" % secure_port));
+                continue;
+            }
+
+            if(!search_port.empty() && !impl.open(search_port, UPnP::PROTOCOL_UDP, str(F_(APPNAME " Search Port (%1% UDP)") % search_port))){
+                log(str(F_("The %1% interface has failed to map the %2% %3% port") % impl.getName() % "UDP" % search_port));
+                continue;
+            }
+#ifdef WITH_DHT
+            if(!dht_port.empty() && !impl.open(dht_port, UPnP::PROTOCOL_UDP, str(F_(APPNAME " DHT Port (%1% UDP)") % dht_port))){
+                log(str(F_("The %1% interface has failed to map the %2% %3% port") % impl.getName() % "UDP" % dht_port));
+                continue;
+            }
+#endif
+
+            opened = true;
+
+#ifdef WITH_DHT
+            if(!dht_port.empty())
+                log(str(F_("Successfully created port mappings (TCP: %1%, UDP: %2%, TLS: %3%, DHT: %4%), mapped using the %5% interface") % conn_port % search_port % secure_port % dht_port % impl.getName()));
+            else
+                log(str(F_("Successfully created port mappings (TCP: %1%, UDP: %2%, TLS: %3%), mapped using the %4% interface") % conn_port % search_port % secure_port % impl.getName()));
+#else
+            log(str(F_("Successfully created port mappings (TCP: %1%, UDP: %2%, TLS: %3%), mapped using the %4% interface") % conn_port % search_port % secure_port % impl.getName()));
+#endif
+
+            if(!BOOLSETTING(NO_IP_OVERRIDE)) {
+                // now lets configure the external IP (connect to me) address
+                string ExternalIP = impl.getExternalIP();
+                if(!ExternalIP.empty()) {
+                    // woohoo, we got the external IP from the UPnP framework
+                    SettingsManager::getInstance()->set(SettingsManager::EXTERNAL_IP, ExternalIP);
+                } else {
+                    //:-( Looks like we have to rely on the user setting the external IP manually
+                    // no need to do cleanup here because the mappings work
+                    log(_("Failed to get external IP"));
+                }
+            }
+
+            ConnectivityManager::getInstance()->mappingFinished(true);
+
+            break;
         }
-
-        ConnectivityManager::getInstance()->mappingFinished(true);
-
-        break;
     }
 
     if(!opened) {
