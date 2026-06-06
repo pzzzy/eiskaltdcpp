@@ -15,6 +15,7 @@
         "USE_QT5": "ON",
         "USE_QT_SQLITE": "ON",
         "USE_MINIUPNP": "ON",
+        "WITH_DHT": "OFF",
         "USE_ASPELL": "ON",
         "USE_PROGRESS_BARS": "OFF",
         "NO_UI_DAEMON": "OFF",
